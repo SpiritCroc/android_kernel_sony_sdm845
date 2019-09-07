@@ -304,7 +304,7 @@ $(obj)/%.dtb.S: $(obj)/%.dtb
 # mkdtimg
 #----------------------------------------------------------------------------
 quiet_cmd_mkdtimg = DTBOIMG $@
-cmd_mkdtimg = mkdtimg cfg_create $@ $<
+cmd_mkdtimg = $(MKDTIMG) cfg_create $@ $<
 
 ifneq ($(DTC_EXT),)
 DTC = $(DTC_EXT)
