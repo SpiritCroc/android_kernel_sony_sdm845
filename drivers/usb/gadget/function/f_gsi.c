@@ -535,6 +535,7 @@ static int ipa_connect_channels(struct gsi_data_port *d_port)
 {
 	int ret;
 	struct f_gsi *gsi = d_port_to_gsi(d_port);
+	struct f_gsi *gsi_rmnet_v2x = __gsi[USB_PROT_RMNET_V2X_IPA];
 	struct ipa_usb_xdci_chan_params *in_params =
 				&d_port->ipa_in_channel_params;
 	struct ipa_usb_xdci_chan_params *out_params =
@@ -664,16 +665,19 @@ static int ipa_connect_channels(struct gsi_data_port *d_port)
 	}
 
 	/*
-	 * Set 'is_sw_path' flag to true for functions using normal EPs so that
-	 * IPA can ignore the dummy address for GEVENTCOUNT register.
+	 * When both RmNet LTE and V2X instances are enabled in a composition,
+	 * set 'is_sw_path' flag to true for LTE, so that IPA can ignore the
+	 * dummy address for GEVENTCOUNT register.
 	 */
 	in_params->is_sw_path = false;
-	if (!d_port->in_ep->ep_intr_num)
+	if (gsi->prot_id == USB_PROT_RMNET_IPA &&
+	    gsi_rmnet_v2x->function.fs_descriptors)
 		in_params->is_sw_path = true;
 
 	if (d_port->out_ep) {
 		out_params->is_sw_path = false;
-		if (!d_port->out_ep->ep_intr_num)
+		if (gsi->prot_id == USB_PROT_RMNET_IPA &&
+		    gsi_rmnet_v2x->function.fs_descriptors)
 			out_params->is_sw_path = true;
 	}
 
@@ -2429,12 +2433,9 @@ static int gsi_set_alt(struct usb_function *f, unsigned int intf,
 {
 	struct f_gsi	 *gsi = func_to_gsi(f);
 	struct f_gsi	 *gsi_rmnet_v2x = __gsi[USB_PROT_RMNET_V2X_IPA];
-	struct f_gsi	 *gsi_ecm = __gsi[USB_PROT_ECM_IPA];
 	struct usb_composite_dev *cdev = f->config->cdev;
 	struct net_device	*net;
 	int ret;
-	int in_intr_num = 0;
-	int out_intr_num = 0;
 
 	log_event_dbg("intf=%u, alt=%u", intf, alt);
 
@@ -2507,43 +2508,20 @@ static int gsi_set_alt(struct usb_function *f, unsigned int intf,
 			}
 
 			/*
-			 * Configure EPs for GSI. Note that:
-			 * 1. In general, configure HW accelerated EPs for all
-			 *    instances.
-			 * 2. If both RmNet LTE and RmNet V2X instances are
-			 *    enabled in a composition, configure HW accelerated
-			 *    EPs for V2X and normal EPs for LTE.
-			 * 3. If RmNet V2X, ECM and ADPL instances are enabled
-			 *    in a composition, configure HW accelerated EPs in
-			 *    both directions for V2X and IN direction for ECM.
-			 *    Configure normal EPs for ECM OUT and ADPL.
+			 * Configure EPs for GSI. Note that when both RmNet LTE
+			 * and V2X instances are enabled in a composition,
+			 * configure HW accelerated EPs for V2X instance and
+			 * normal EPs for LTE.
 			 */
-			switch (gsi->prot_id) {
-			case USB_PROT_RMNET_IPA:
-				if (!gsi_rmnet_v2x->function.fs_descriptors) {
-					in_intr_num = 2;
-					out_intr_num = 1;
-				}
-				break;
-			case USB_PROT_ECM_IPA:
-				in_intr_num = 2;
-				if (!gsi_rmnet_v2x->function.fs_descriptors)
-					out_intr_num = 1;
-				break;
-			case USB_PROT_DIAG_IPA:
-				if (!(gsi_ecm->function.fs_descriptors &&
-					gsi_rmnet_v2x->function.fs_descriptors))
-					in_intr_num = 3;
-				break;
-			default:
-				in_intr_num = 2;
-				out_intr_num = 1;
-			}
-
-			/* gsi_configure_ep required only for GSI-IPA EPs */
 			if (gsi->d_port.in_ep &&
 				gsi->prot_id <= USB_PROT_RMNET_V2X_IPA) {
-				gsi->d_port.in_ep->ep_intr_num = in_intr_num;
+				if (gsi->prot_id == USB_PROT_DIAG_IPA)
+					gsi->d_port.in_ep->ep_intr_num = 3;
+				else if (gsi->prot_id == USB_PROT_RMNET_IPA &&
+					 gsi_rmnet_v2x->function.fs_descriptors)
+					gsi->d_port.in_ep->ep_intr_num = 0;
+				else
+					gsi->d_port.in_ep->ep_intr_num = 2;
 				usb_gsi_ep_op(gsi->d_port.in_ep,
 					&gsi->d_port.in_request,
 						GSI_EP_OP_CONFIG);
@@ -2551,7 +2529,11 @@ static int gsi_set_alt(struct usb_function *f, unsigned int intf,
 
 			if (gsi->d_port.out_ep &&
 				gsi->prot_id <= USB_PROT_RMNET_V2X_IPA) {
-				gsi->d_port.out_ep->ep_intr_num = out_intr_num;
+				if (gsi->prot_id == USB_PROT_RMNET_IPA &&
+				    gsi_rmnet_v2x->function.fs_descriptors)
+					gsi->d_port.out_ep->ep_intr_num = 0;
+				else
+					gsi->d_port.out_ep->ep_intr_num = 1;
 				usb_gsi_ep_op(gsi->d_port.out_ep,
 					&gsi->d_port.out_request,
 						GSI_EP_OP_CONFIG);
@@ -3092,6 +3074,17 @@ static int gsi_bind(struct usb_configuration *c, struct usb_function *f)
 
 	switch (gsi->prot_id) {
 	case USB_PROT_RNDIS_IPA:
+		/* "Wireless" RNDIS6; auto-detected by Windows */
+		pr_debug("%s: linux_support=%d\n",  __func__,
+							gsi->linux_support);
+		if (gsi->linux_support) {
+			pr_info("%s: RNDIS5\n",  __func__);
+			gsi->rndis_id = WIRELESS_CONTROLLER_REMOTE_NDIS;
+		} else {
+			pr_info("%s: RNDIS6\n",  __func__);
+			gsi->rndis_id = MISC_RNDIS_OVER_ETHERNET;
+		}
+
 		info.string_defs = rndis_gsi_string_defs;
 		info.ctrl_desc = &rndis_gsi_control_intf;
 		info.ctrl_str_idx = 0;
@@ -3616,6 +3609,8 @@ static struct f_gsi *gsi_function_init(void)
 	gsi->gsi_rw_timer_interval = DEFAULT_RW_TIMER_INTERVAL;
 	setup_timer(&gsi->gsi_rw_timer, gsi_rw_timer_func, (unsigned long) gsi);
 
+	gsi->linux_support = false;
+
 	return gsi;
 }
 
@@ -3777,6 +3772,51 @@ static ssize_t gsi_info_show(struct config_item *item, char *page)
 	return ret;
 }
 
+static ssize_t gsi_linux_support_show(struct config_item *item, char *page)
+{
+	struct f_gsi *gsi = to_gsi_opts(item)->gsi;
+	int ret;
+
+	switch (gsi->prot_id) {
+	case IPA_USB_RNDIS:
+		/* "Y\n\0" 3characters */
+		ret = snprintf(page, 3, "%c\n", gsi->linux_support ? 'Y' : 'N');
+		break;
+	default:
+		ret = EBADR;
+		break;
+	}
+
+	return ret;
+}
+
+static ssize_t gsi_linux_support_store(struct config_item *item,
+						 const char *page, size_t len)
+{
+	struct f_gsi *gsi = to_gsi_opts(item)->gsi;
+	bool val;
+	int ret = 0;
+
+	switch (gsi->prot_id) {
+	case IPA_USB_RNDIS:
+		ret = strtobool(page, &val);
+		if (ret)
+			break;
+		gsi->linux_support = val;
+		pr_info("%s: set linux_support=%d.\n",  __func__,
+							gsi->linux_support);
+		break;
+	default:
+		ret = -EBADR;
+		break;
+	}
+
+	if (ret)
+		len = ret;
+	return len;
+}
+
+CONFIGFS_ATTR(gsi_, linux_support);
 CONFIGFS_ATTR_RO(gsi_, info);
 
 static struct configfs_attribute *gsi_attrs[] = {
@@ -3817,6 +3857,7 @@ CONFIGFS_ATTR(gsi_, rndis_class_id);
 
 static struct configfs_attribute *gsi_rndis_attrs[] = {
 	&gsi_attr_info,
+	&gsi_attr_linux_support,
 	&gsi_attr_rndis_class_id,
 	NULL,
 };

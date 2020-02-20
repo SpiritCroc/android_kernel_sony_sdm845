@@ -57,6 +57,7 @@ extern void update_task_ravg(struct task_struct *p, struct rq *rq, int event,
 						u64 wallclock, u64 irqtime);
 
 extern unsigned int nr_eligible_big_tasks(int cpu);
+extern u64 walt_get_prev_group_run_sum(struct rq *rq);
 
 static inline void
 inc_nr_big_task(struct walt_sched_stats *stats, struct task_struct *p)
@@ -150,16 +151,15 @@ extern void fixup_walt_sched_stats_common(struct rq *rq, struct task_struct *p,
 extern void inc_rq_walt_stats(struct rq *rq, struct task_struct *p);
 extern void dec_rq_walt_stats(struct rq *rq, struct task_struct *p);
 extern void fixup_busy_time(struct task_struct *p, int new_cpu);
+extern void walt_prepare_migrate(struct task_struct *p,
+					int src_cpu, int new_cpu, bool locked);
+extern void walt_finish_migrate(struct task_struct *p,
+					int src_cpu, int new_cpu, bool locked);
 extern void init_new_task_load(struct task_struct *p);
 extern void mark_task_starting(struct task_struct *p);
 extern void set_window_start(struct rq *rq);
 void account_irqtime(int cpu, struct task_struct *curr, u64 delta,
                                   u64 wallclock);
-void walt_fixup_cumulative_runnable_avg(struct rq *rq, struct task_struct *p,
-					u64 new_task_load);
-
-
-
 extern bool do_pl_notif(struct rq *rq);
 
 #define SCHED_HIGH_IRQ_TIMEOUT 3
@@ -309,9 +309,6 @@ static inline void walt_sched_init(struct rq *rq) { }
 static inline void walt_rotate_work_init(void) { }
 static inline void walt_rotation_checkpoint(int nr_big) { }
 static inline void walt_update_last_enqueue(struct task_struct *p) { }
-static inline void walt_fixup_cumulative_runnable_avg(struct rq *rq,
-						      struct task_struct *p,
-						      u64 new_task_load) { }
 
 static inline void update_task_ravg(struct task_struct *p, struct rq *rq,
 				int event, u64 wallclock, u64 irqtime) { }
@@ -321,6 +318,11 @@ static inline void walt_inc_cumulative_runnable_avg(struct rq *rq,
 }
 
 static inline unsigned int nr_eligible_big_tasks(int cpu)
+{
+	return 0;
+}
+
+static inline u64 walt_get_prev_group_run_sum(struct rq *rq)
 {
 	return 0;
 }
@@ -345,6 +347,10 @@ static inline void walt_dec_cumulative_runnable_avg(struct rq *rq,
 }
 
 static inline void fixup_busy_time(struct task_struct *p, int new_cpu) { }
+static inline void walt_prepare_migrate(struct task_struct *p,
+		int src_cpu, int new_cpu, bool locked) { }
+static inline void walt_finish_migrate(struct task_struct *p,
+		int src_cpu, int new_cpu, bool locked) { }
 static inline void init_new_task_load(struct task_struct *p)
 {
 }

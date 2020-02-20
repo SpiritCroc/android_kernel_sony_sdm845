@@ -32,7 +32,7 @@
 #define to_sde_encoder_phys_cmd(x) \
 	container_of(x, struct sde_encoder_phys_cmd, base)
 
-#define PP_TIMEOUT_MAX_TRIALS	2
+#define PP_TIMEOUT_MAX_TRIALS	10
 
 /*
  * Tearcheck sync start and continue thresholds are empirically found
@@ -402,7 +402,9 @@ static void sde_encoder_phys_cmd_cont_splash_mode_set(
 	}
 
 	phys_enc->cached_mode = *adj_mode;
+#ifndef CONFIG_DRM_SDE_SPECIFIC_PANEL
 	phys_enc->enable_state = SDE_ENC_ENABLED;
+#endif /* CONFIG_DRM_SDE_SPECIFIC_PANEL */
 
 	if (!phys_enc->hw_ctl || !phys_enc->hw_pp) {
 		SDE_DEBUG("invalid ctl:%d pp:%d\n",
@@ -1180,24 +1182,8 @@ static int _sde_encoder_phys_cmd_wait_for_ctl_start(
 		else
 			ret = 0;
 
-		if (sde_encoder_phys_cmd_is_master(phys_enc)) {
-			/*
-			 * Signaling the retire fence at ctl start timeout
-			 * to allow the next commit and avoid device freeze.
-			 * As ctl start timeout can occurs due to no read ptr,
-			 * updating pending_rd_ptr_cnt here may not cover all
-			 * cases. Hence signaling the retire fence.
-			 */
-			if (atomic_add_unless(
-			 &phys_enc->pending_retire_fence_cnt, -1, 0))
-				phys_enc->parent_ops.handle_frame_done(
-				 phys_enc->parent,
-				 phys_enc,
-				 SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE);
-			atomic_add_unless(
-				&phys_enc->pending_ctlstart_cnt, -1, 0);
+		if (sde_encoder_phys_cmd_is_master(phys_enc))
 			atomic_inc_return(&phys_enc->ctlstart_timeout);
-		}
 	}
 
 	return ret;

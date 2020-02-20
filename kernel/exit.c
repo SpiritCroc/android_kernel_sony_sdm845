@@ -53,6 +53,7 @@
 #include <linux/oom.h>
 #include <linux/writeback.h>
 #include <linux/shm.h>
+#include <linux/oom_score_notifier.h>
 #include <linux/kcov.h>
 
 #include "sched/tune.h"
@@ -94,6 +95,8 @@ static void __exit_signal(struct task_struct *tsk)
 	spin_lock(&sighand->siglock);
 
 	posix_cpu_timers_exit(tsk);
+	oom_score_notify_free(tsk);
+
 	if (group_dead) {
 		posix_cpu_timers_exit_group(tsk);
 		tty = sig->tty;
@@ -687,7 +690,6 @@ static void exit_notify(struct task_struct *tsk, int group_dead)
 	if (group_dead)
 		kill_orphaned_pgrp(tsk->group_leader, NULL);
 
-	tsk->exit_state = EXIT_ZOMBIE;
 	if (unlikely(tsk->ptrace)) {
 		int sig = thread_group_leader(tsk) &&
 				thread_group_empty(tsk) &&
