@@ -108,3 +108,6 @@ obj-$(CONFIG_TOUCHSCREEN_FTS)		+= focaltech_touch/
 obj-$(CONFIG_TOUCHSCREEN_GT9XX_v28)		+= gt9xx_v2.8/
 obj-$(CONFIG_TOUCHSCREEN_HIMAX_CHIPSET)	+= hxchipset/
 obj-$(CONFIG_TOUCHSCREEN_EKTF3XXX_CHIPSET) += ektf3xxx/
+obj-$(CONFIG_TOUCHSCREEN_CLEARPAD_RMI_DEV)     += clearpad_rmi_dev.o
+obj-$(CONFIG_TOUCHSCREEN_CLEARPAD)     += clearpad_core.o
+obj-$(CONFIG_TOUCHSCREEN_CLEARPAD_I2C) += clearpad_i2c.o
