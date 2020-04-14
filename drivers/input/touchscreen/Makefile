@@ -111,3 +111,4 @@ obj-$(CONFIG_TOUCHSCREEN_EKTF3XXX_CHIPSET) += ektf3xxx/
 obj-$(CONFIG_TOUCHSCREEN_CLEARPAD_RMI_DEV)     += clearpad_rmi_dev.o
 obj-$(CONFIG_TOUCHSCREEN_CLEARPAD)     += clearpad_core.o
 obj-$(CONFIG_TOUCHSCREEN_CLEARPAD_I2C) += clearpad_i2c.o
+obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_TCM)        += synaptics_tcm/
