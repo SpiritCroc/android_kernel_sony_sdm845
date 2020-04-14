@@ -45,6 +45,13 @@ config MSMB_CAMERA_DEBUG
     ---help---
       Enable printk() debug for msm camera 2.0
 
+config SONY_CAMERA
+   tristate "Sony camera"
+   depends on SPECTRA_CAMERA
+   default n
+   ---help---
+     Sony camera.
+
 
 
 if MSMB_CAMERA
