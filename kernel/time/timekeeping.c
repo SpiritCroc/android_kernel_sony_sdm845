@@ -24,6 +24,8 @@
 #include <linux/stop_machine.h>
 #include <linux/pvclock_gtod.h>
 #include <linux/compiler.h>
+#include <linux/ftrace.h>
+#include <linux/cred.h>
 
 #include "tick-internal.h"
 #include "ntp_internal.h"
@@ -1227,6 +1229,18 @@ int do_settimeofday64(const struct timespec64 *ts)
 	struct timespec64 ts_delta, xt;
 	unsigned long flags;
 	int ret = 0;
+	kuid_t current_user;
+	pid_t current_pid;
+
+	static int call_count = 0;
+	call_count++;
+
+	current_user = current_uid();
+	current_pid = task_pid_nr(current);
+	printk_deferred(KERN_WARNING
+			"do_settimeofday64 %d %d %d %s\n", call_count, current_user.val, current_pid, current->comm);
+	trace_printk(
+			"do_settimeofday64 %d %d %d %s\n", call_count, current_user.val, current_pid, current->comm);
 
 	if (!timespec64_valid_strict(ts))
 		return -EINVAL;
